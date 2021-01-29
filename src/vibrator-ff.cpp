@@ -34,97 +34,117 @@
  */
 namespace hfd {
 
+bool inputDeviceSupportsFF(std::string devPath) {
+	int ret;
+	unsigned char features[1 + FF_MAX/8/sizeof(unsigned char)];
+	int tempFd = open(devPath.c_str(), O_RDWR);
+	int request = EVIOCGBIT(EV_FF, sizeof(features)*sizeof(unsigned char));
+	bool supported = false;
+
+	ret = ioctl(tempFd, request, &features);
+
+	if (testBit(FF_RUMBLE, features)) {
+		std::cout << "FF: '" << devPath << "' supports rumble!" << std::endl;
+		supported =  true;
+	}
+
+	close(tempFd);
+	return supported;
+}
+
 bool VibratorFF::usable() {
-	return access("/sys/class/input/event0", F_OK ) != -1;
+	return VibratorFF::getFirstFFDevice().size() > 0;
 }
 
 void VibratorFF::configure(State state, int durationMs) {
-	// For now just assume we support rumble, this is bad
 	int ret;
-	//std::string path = "/dev/input/event0";// + m_device.get_property("KERNEL");
 	struct input_event play;
 	struct input_event stop;
 
-	if (state == State::On) {
-		effect.u.rumble.strong_magnitude = 0x6000; // This should be adjustable
-		std::cout << "rumbling with magnitude: " << effect.u.rumble.strong_magnitude << " for " << durationMs << "ms" << std::endl;
-		ret = ioctl(fd, EVIOCSFF, &effect);
-		if (ret < 0) {
-			std::cout << "Failed to upload rumble effect" << std::endl;
-			return;
-		}
-		play.type = EV_FF;
-		play.code = effect.id;
-		play.value = 1;
-		write(fd, (const void*) &play, sizeof(play));
-		usleep(durationMs * 1000);
+	if (fd < 0) {
+		std::cout << "FF: can't play effects" << std::endl;
+		return;
 	}
-	std::cout << "Stopping rumble" << std::endl;
+
+	if (state == State::Off) {
+		std::cout << "FF: Stopping effects" << std::endl;
+		goto stop;
+	}
+
+	std::cout << "Rumbling for " << durationMs << "ms" << std::endl;
+	effect.u.rumble.strong_magnitude = 0x6000; // This should be adjustable
+	ret = ioctl(fd, EVIOCSFF, &effect);
+	if (ret < 0) {
+		std::cout << "FF: Failed to upload rumble effect" << std::endl;
+		close(fd);
+		fd = -1;
+		return;
+	}
+
+	// Create an input event to play the effect uploaded in the constructor
+	play.type = EV_FF;
+	play.code = effect.id;
+	// This is the number of times to play the effect, the rumble effect however
+	// continue indefinitely.
+	play.value = 1;
+	ret = write(fd, (const void*) &play, sizeof(play));
+	if (ret < 0) {
+		std::cout << "Failed to play rumble" << std::endl;
+		return;
+	}
+
+	// Vibrate for the correct duration.
+	usleep(durationMs * 1000);
+
+stop:
+	// Now create a stop event to stop the effect playing
 	stop.type = EV_FF;
 	stop.code = effect.id;
+	// This will override the play event and call the effect handler
+	// in the driver with all values zero'd out.
 	stop.value = 0;
-	write(fd, (const void*) &stop, sizeof(stop));
-	// remove effect
-	// ret = ioctl(fd, EVIOCRMFF, effect.id);
-	// if (ret < 0)
-	// 		std::cout << "Filed to STOP rumble (oh no)" << std::endl;
+	ret = write(fd, (const void*) &stop, sizeof(stop));
+	if (ret < 0)
+		std::cout << "FF: Failed to STOP rumble (oh no)" << std::endl;
 }
 
-Udev::UdevDevice  VibratorFF::getFirstFFDevice() {
+// This finds the first device that supports force feedback
+// and assumes that it supports rumble, which it may not.
+// We should also query the device feature flags and be SURE
+std::string VibratorFF::getFirstFFDevice() {
 	Udev::Udev udev;
-	Udev::UdevDevice device;
 	Udev::UdevEnumerate enumerate = udev.enumerate_new();
+	std::string path = "";
 
 	enumerate.add_match_subsystem("input");
-	enumerate.add_match_sysattr("capabilities/ff", "107030000");
 	enumerate.scan_devices();
 	std::vector<Udev::UdevDevice> devices = enumerate.enumerate_devices();
-	std::cout << "FF: Found " << devices.size() << " devices" << std::endl;
-	if (devices.size() > 0) {
-		std::cout << "Device " << devices.at(0).get_syspath() << " supports ff" << std::endl;
-		device = udev.device_from_syspath(devices.at(0).get_syspath());
+	std::cout << "FF: Found " << devices.size() << " input devices" << std::endl;
+	for(int i = 0; i < devices.size(); i++) {
+		const auto properties = devices.at(i).get_properties();
+		if (properties.find("DEVNAME") != properties.end()) {
+			auto temp = devices.at(i).get_properties().at("DEVNAME");
+			if (inputDeviceSupportsFF(temp)) {
+				path = temp;
+			}
+		}
 	}
-	return device;
-	
-	// for (size_t i = 0; i < devices.size(); i++)
-	// {
-	// 	std::string attr = devices.at(i).get_sysattr("capabilities/ff");
-	// 	std::cout << "capabilities/ff = " << attr << std::endl;
-	// 	std::cout << "Testing if device '" << devices.at(i).get_devpath() << "' supports FF" << std::endl;
-
-	// 	try { 
-	// 		if(attr.compare("0") == 0) { // Need to actually run the get_sysattr function.
-	// 			std::cout << "FF not supported";
-	// 			continue;
-	// 		}
-
-	// 		// Construct our device from the syspath, there's probably a better
-	// 		// way to avoid dealing with pointers.
-	// 		std::cout << devices.at(i).get_syspath() << std::endl;
-	// 		device = udev.device_from_syspath(devices.at(i).get_syspath());
-	// 		std::cout << "Device " << device.get_devpath() << " supports FF!" << std::endl;
-	// 		break;
-	// 	} catch(const std::runtime_error ) {
-	// 		// swallow
-	// 		continue;
-	// 	}
-	// }
-	// return device;
+	return path;
 }
 
 VibratorFF::VibratorFF(): Vibrator() {
-	//m_device = getFirstFFDevice();
-	// Udev::Udev udev;
-	// m_device = udev.device_from_syspath("/sys/class/input/event0");
+	devname = VibratorFF::getFirstFFDevice();
+	int ret;
 
 	effect.type = FF_RUMBLE;
 	effect.id = -1;
-	effect.u.rumble.strong_magnitude = 0;
+	effect.u.rumble.strong_magnitude = 0; // This should be adjustable
 	effect.u.rumble.weak_magnitude = 0;
 
-	fd = open(devpath.c_str(), O_RDWR);
+	std::cout << "FD: Opening device '" << devname << "'" << std::endl;
+	fd = open(devname.c_str(), O_RDWR);
 	if (fd < 0) {
-		std::cerr << "Can't open force feedback device path: " << devpath << std::endl;
+		std::cerr << "FF: Can't open force feedback device: " << devname << std::endl;
 		return;
 	}
 
@@ -132,6 +152,14 @@ VibratorFF::VibratorFF(): Vibrator() {
 }
 
 VibratorFF::~VibratorFF() {
-	close(fd);
+	std::cout << "FF: Destructor called" << std::endl;
+	int ret;
+	if (fd > 0) {
+		std::cout << "FF: Removing effect " << effect.id << " and closing fd" << std::endl;
+		ret = ioctl(fd, EVIOCRMFF, effect.id);
+		if (ret < 0)
+			std::cout << "FF: Failed to remove effect" << std::endl;
+		close(fd);	
+	}
 }
 }

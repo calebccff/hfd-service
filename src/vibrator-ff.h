@@ -24,28 +24,39 @@
 #include "udev/udev-cpp.h"
 
 #define BITS_TO_LONGS(x) \
-        (((x) + 8 * sizeof (unsigned long) - 1) / (8 * sizeof (unsigned long)))
+		(((x) + 8 * sizeof (unsigned long) - 1) / (8 * sizeof (unsigned long)))
 
-// This is a hack until we have a way of querying devices
-// to see if they support force feedback (maybe try ALL of them???)
-#define HAPTICS_EVENT_NUM 0
+// Borrowed from linuxconsole/utils/bitmaskros.h
+
+/* Number of bits for 1 unsigned char */
+#define nBitsPerUchar          (sizeof(unsigned char) * 8)
+
+/* Index=Offset of given bit in 1 unsigned char */
+#define bitOffsetInUchar(bit)  ((bit)%nBitsPerUchar)
+
+/* Index=Offset of the unsigned char associated to the bit
+ * at the given index=offset
+ */
+#define ucharIndexForBit(bit)  ((bit)/nBitsPerUchar)
+
+/* Test the bit with given index=offset in an unsigned char array */
+#define testBit(bit, array)    ((array[ucharIndexForBit(bit)] >> bitOffsetInUchar(bit)) & 1)
 
 namespace hfd {
 class VibratorFF : public Vibrator {
 
 public:
-    VibratorFF();
-    ~VibratorFF();
+	VibratorFF();
+	~VibratorFF();
 
-    static bool usable();
-    static Udev::UdevDevice getFirstFFDevice();
+	static bool usable();
+	static std::string getFirstFFDevice();
 protected:
-    void configure(State state, int durationMs) override;
-    
+	void configure(State state, int durationMs) override;
+	
 private:
-    struct ff_effect effect;
-    const std::string devpath = "/dev/input/event0";
-    int fd;
-    Udev::UdevDevice m_device;
+	struct ff_effect effect;
+	std::string devname;
+	int fd;
 };
 }
