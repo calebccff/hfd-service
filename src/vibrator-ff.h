@@ -23,22 +23,15 @@
 #include "vibrator.h"
 #include "udev/udev-cpp.h"
 
-#define BITS_TO_LONGS(x) \
-        (((x) + 8 * sizeof (unsigned long) - 1) / (8 * sizeof (unsigned long)))
-
 // Borrowed from linuxconsole/utils/bitmaskros.h
-
 /* Number of bits for 1 unsigned char */
 #define nBitsPerUchar          (sizeof(unsigned char) * 8)
-
 /* Index=Offset of given bit in 1 unsigned char */
 #define bitOffsetInUchar(bit)  ((bit)%nBitsPerUchar)
-
 /* Index=Offset of the unsigned char associated to the bit
  * at the given index=offset
  */
 #define ucharIndexForBit(bit)  ((bit)/nBitsPerUchar)
-
 /* Test the bit with given index=offset in an unsigned char array */
 #define testBit(bit, array)    ((array[ucharIndexForBit(bit)] >> bitOffsetInUchar(bit)) & 1)
 

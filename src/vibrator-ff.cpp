@@ -25,7 +25,6 @@
 #include <vector>
 #include <linux/input.h>
 #include <sys/ioctl.h>
-#include <unistd.h>
 #include <fcntl.h>
 
 /*
@@ -34,10 +33,14 @@
  */
 namespace hfd {
 
+// For this implementation call the static getFirstFFDevice
+// And check that it didn't return the empty string.
 bool VibratorFF::usable() {
 	return VibratorFF::getFirstFFDevice().size() > 0;
 }
 
+// This takes a path to a device like '/dev/input/eventX'
+// And queries the device to see if it supports FF_RUMBLE
 bool inputDeviceSupportsFF(std::string devname) {
 	int ret;
 	unsigned char features[1 + FF_MAX/8/sizeof(unsigned char)];
@@ -47,54 +50,39 @@ bool inputDeviceSupportsFF(std::string devname) {
 
 	ret = ioctl(tempFd, request, &features);
 
-	std::cout << "FF: Testing device " << devname << " with fd: " << tempFd << std::endl;
-
 	if (testBit(FF_RUMBLE, features)) {
-		std::cout << "FF: '" << devname << "' supports rumble!" << std::endl;
 		supported =  true;
 	} else {
-		std::cout << "FF: '" << devname << "' doesn't support rumble :(" << std::endl;
 	}
 
 	ret = close(tempFd);
 	if (ret != 0) {
-		std::cout << "FF: Failed to close " << tempFd << ": " << ret << std::endl;
+		std::cerr << "FF: Failed to close " << tempFd << ": " << ret << std::endl;
 	}
 	return supported;
 }
 
+// Create play and/or stop input events to control
+// the rumble effect we uploaded in the constructor.
 void VibratorFF::configure(State state, int durationMs) {
-	// For now just assume we support rumble, this is bad
 	int ret;
-	//std::string path = "/dev/input/event0";// + m_device.get_property("KERNEL");
 	struct input_event play;
 	struct input_event stop;
 
-	std::cout << "FF: Using fd " << fd << ", effect id: " << effect.id << ", type: " << effect.type << std::endl;
-
 	if (state == State::On) {
-		effect.u.rumble.strong_magnitude = 0x6000; // This should be adjustable
 		std::cout << "rumbling with magnitude: " << effect.u.rumble.strong_magnitude << " for " << durationMs << "ms" << std::endl;
-		ret = ioctl(fd, EVIOCSFF, &effect);
-		if (ret < 0) {
-			std::cout << "Failed to upload rumble effect" << std::endl;
-			return;
-		}
+
 		play.type = EV_FF;
 		play.code = effect.id;
 		play.value = 1;
 		write(fd, (const void*) &play, sizeof(play));
+
 		usleep(durationMs * 1000);
 	}
-	std::cout << "Stopping rumble" << std::endl;
 	stop.type = EV_FF;
 	stop.code = effect.id;
 	stop.value = 0;
 	write(fd, (const void*) &stop, sizeof(stop));
-	// remove effect
-	// ret = ioctl(fd, EVIOCRMFF, effect.id);
-	// if (ret < 0)
-	// 		std::cout << "Filed to STOP rumble (oh no)" << std::endl;
 }
 
 // This finds the first device that supports force feedback
@@ -103,11 +91,6 @@ void VibratorFF::configure(State state, int durationMs) {
 std::string VibratorFF::getFirstFFDevice() {
 	Udev::Udev udev;
 	Udev::UdevEnumerate enumerate = udev.enumerate_new();
-	//std::string path = "";
-
-	// inputDeviceSupportsFF("/dev/input/event0");
-
-	// return "/dev/input/event0";
 
 	enumerate.add_match_subsystem("input");
 	enumerate.scan_devices();
@@ -126,14 +109,20 @@ std::string VibratorFF::getFirstFFDevice() {
 	return "";
 }
 
+// Create a force feedback vibrator
 VibratorFF::VibratorFF(): Vibrator() {
+	int ret;
+	// Find the first available input device that supports
+	// force feedback, we expect this to succeed as the caller
+	// should have called the static 'usable' method first.
 	devname = VibratorFF::getFirstFFDevice();
 
 	std::memset(&effect, 0, sizeof(effect));
 
+	// Create a rumble effect
 	effect.type = FF_RUMBLE;
 	effect.id = -1;
-	effect.u.rumble.strong_magnitude = 0;
+	effect.u.rumble.strong_magnitude = 0x6000; // This should be adjustable
 	effect.u.rumble.weak_magnitude = 0;
 
 	fd = open(devname.c_str(), O_RDWR);
@@ -142,11 +131,22 @@ VibratorFF::VibratorFF(): Vibrator() {
 		return;
 	}
 
-	//configure(State::Off, 0);
+	// Upload the effect to the device, this doesn't cause
+	// it to vibrate, just to store the effect in kernel memory.
+	ret = ioctl(fd, EVIOCSFF, &effect);
+	if (ret < 0) {
+		std::cerr << "Failed to upload rumble effect" << std::endl;
+		return;
+	}
 }
 
 VibratorFF::~VibratorFF() {
+	int ret;
 	if (fd > 0) {
+		// Unload the effect
+		ret = ioctl(fd, EVIOCRMFF, effect.id);
+		if (ret < 0)
+				std::cerr << "Failed to unload effect " << effect.id << std::endl;
 		close(fd);
 	}
 }
