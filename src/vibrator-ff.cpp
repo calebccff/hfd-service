@@ -47,6 +47,8 @@ bool inputDeviceSupportsFF(std::string devname) {
 
 	ret = ioctl(tempFd, request, &features);
 
+	std::cout << "FF: Testing device " << devname << " with fd: " << tempFd << std::endl;
+
 	if (testBit(FF_RUMBLE, features)) {
 		std::cout << "FF: '" << devname << "' supports rumble!" << std::endl;
 		supported =  true;
@@ -67,6 +69,8 @@ void VibratorFF::configure(State state, int durationMs) {
 	//std::string path = "/dev/input/event0";// + m_device.get_property("KERNEL");
 	struct input_event play;
 	struct input_event stop;
+
+	std::cout << "FF: Using fd " << fd << ", effect id: " << effect.id << ", type: " << effect.type << std::endl;
 
 	if (state == State::On) {
 		effect.u.rumble.strong_magnitude = 0x6000; // This should be adjustable
@@ -99,9 +103,11 @@ void VibratorFF::configure(State state, int durationMs) {
 std::string VibratorFF::getFirstFFDevice() {
 	Udev::Udev udev;
 	Udev::UdevEnumerate enumerate = udev.enumerate_new();
-	std::string path = "";
+	//std::string path = "";
 
-	return "/dev/input/event0";
+	// inputDeviceSupportsFF("/dev/input/event0");
+
+	// return "/dev/input/event0";
 
 	enumerate.add_match_subsystem("input");
 	enumerate.scan_devices();
@@ -110,18 +116,20 @@ std::string VibratorFF::getFirstFFDevice() {
 	for(int i = 0; i < devices.size(); i++) {
 		const auto properties = devices.at(i).get_properties();
 		if (properties.find("DEVNAME") != properties.end()) {
-			auto temp = devices.at(i).get_properties().at("DEVNAME");
+			std::string temp = devices.at(i).get_properties().at("DEVNAME");
 			if (inputDeviceSupportsFF(temp)) {
-				path = temp;
-				break;
+				std::cout << "Using " << temp << std::endl;
+				return temp;
 			}
 		}
 	}
-	return path;
+	return "";
 }
 
 VibratorFF::VibratorFF(): Vibrator() {
 	devname = VibratorFF::getFirstFFDevice();
+
+	std::memset(&effect, 0, sizeof(effect));
 
 	effect.type = FF_RUMBLE;
 	effect.id = -1;
@@ -134,7 +142,7 @@ VibratorFF::VibratorFF(): Vibrator() {
 		return;
 	}
 
-	configure(State::Off, 0);
+	//configure(State::Off, 0);
 }
 
 VibratorFF::~VibratorFF() {
