@@ -101,7 +101,7 @@ std::string VibratorFF::getFirstFFDevice() {
 	Udev::UdevEnumerate enumerate = udev.enumerate_new();
 	std::string path = "";
 
-	//return "/dev/input/event0";
+	return "/dev/input/event0";
 
 	enumerate.add_match_subsystem("input");
 	enumerate.scan_devices();
