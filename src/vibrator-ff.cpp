@@ -50,9 +50,14 @@ bool inputDeviceSupportsFF(std::string devname) {
 	if (testBit(FF_RUMBLE, features)) {
 		std::cout << "FF: '" << devname << "' supports rumble!" << std::endl;
 		supported =  true;
+	} else {
+		std::cout << "FF: '" << devname << "' doesn't support rumble :(" << std::endl;
 	}
 
-	close(tempFd);
+	ret = close(tempFd);
+	if (ret != 0) {
+		std::cout << "FF: Failed to close " << tempFd << ": " << ret << std::endl;
+	}
 	return supported;
 }
 
@@ -96,6 +101,8 @@ std::string VibratorFF::getFirstFFDevice() {
 	Udev::UdevEnumerate enumerate = udev.enumerate_new();
 	std::string path = "";
 
+	//return "/dev/input/event0";
+
 	enumerate.add_match_subsystem("input");
 	enumerate.scan_devices();
 	std::vector<Udev::UdevDevice> devices = enumerate.enumerate_devices();
@@ -106,6 +113,7 @@ std::string VibratorFF::getFirstFFDevice() {
 			auto temp = devices.at(i).get_properties().at("DEVNAME");
 			if (inputDeviceSupportsFF(temp)) {
 				path = temp;
+				break;
 			}
 		}
 	}
