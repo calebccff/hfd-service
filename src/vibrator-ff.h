@@ -24,7 +24,7 @@
 #include "udev/udev-cpp.h"
 
 #define BITS_TO_LONGS(x) \
-		(((x) + 8 * sizeof (unsigned long) - 1) / (8 * sizeof (unsigned long)))
+        (((x) + 8 * sizeof (unsigned long) - 1) / (8 * sizeof (unsigned long)))
 
 // Borrowed from linuxconsole/utils/bitmaskros.h
 
@@ -46,17 +46,17 @@ namespace hfd {
 class VibratorFF : public Vibrator {
 
 public:
-	VibratorFF();
-	~VibratorFF();
+    VibratorFF();
+    ~VibratorFF();
 
-	static bool usable();
-	static std::string getFirstFFDevice();
+    static bool usable();
+    static std::string getFirstFFDevice();
 protected:
-	void configure(State state, int durationMs) override;
-	
+    void configure(State state, int durationMs) override;
+    
 private:
-	struct ff_effect effect;
-	std::string devname;
-	int fd;
+    struct ff_effect effect;
+    std::string devname;
+    int fd;
 };
 }

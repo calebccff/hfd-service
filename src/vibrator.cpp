@@ -62,7 +62,7 @@ std::shared_ptr<Vibrator> Vibrator::create(std::string type)
 {
     if (type == "ff") {
         std::cout << "Using force feedback vibrator" << std::endl;
-        return std::make_shared<VibratorFF>();
+        return std::make_shared<VibratorFF>();  
     } else if (type == "sysfs") {
         std::cout << "Using sysfs vibrator" << std::endl;
         return std::make_shared<VibratorSysfs>();  
